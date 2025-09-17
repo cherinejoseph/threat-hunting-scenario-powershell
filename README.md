@@ -9,11 +9,12 @@
 - Windows 10 Virtual Machines (Microsoft Azure)
 - EDR Platform: Microsoft Defender for Endpoint
 - Kusto Query Language (KQL)
-- Tor Browser
+- PowerShell
+- Eicar File 
 
 ##  Scenario
 
-Management suspects that some employees may be using TOR browsers to bypass network security controls because recent network logs show unusual encrypted traffic patterns and connections to known TOR entry nodes. Additionally, there have been anonymous reports of employees discussing ways to access restricted sites during work hours. The goal is to detect any TOR usage and analyze related security incidents to mitigate potential risks. If any use of TOR is found, notify management.
+A recent cybersecurity news alert highlighted an increase in threat actors abusing PowerShell to download malicious payloads directly from the internet. In response, management directed a proactive hunt on a specific corporate endpoint due to unusual PowerShell activity detected in preliminary logs. The goal was to identify any suspicious PowerShell usage and malicious file interactions on this device.
 
 ### High-Level TOR-Related IoC Discovery Plan
 
