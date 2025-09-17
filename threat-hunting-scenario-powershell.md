@@ -7,7 +7,7 @@
 3. Rename File Locally Using PowerShell:
    - **Purpose: Attempt to convert the downloaded payload to an executable in preparation for running it.**
 4. Attempted Execution of Payload
-   - **NOTE: Execution will fail because renaming the file does not make it a valid Windows executable (corrupted/unreadable).**
+   - **Note: Execution will fail because renaming the file does not make it a valid Windows executable (corrupted/unreadable).**
 5. Delete the file
 
 ---
