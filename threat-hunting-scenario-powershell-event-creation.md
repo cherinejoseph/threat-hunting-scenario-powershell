@@ -1,4 +1,4 @@
-# Threat Event (Suspicious PowerShell)
+# Threat Event (Suspicious PowerShell Activity)
 **Unauthorized PowerShell Script Execution and Download Attempt**
 
 ## Steps the "Bad Actor" took Create Logs and IoCs:
@@ -17,55 +17,68 @@
 |---------------------|------------------------------------------------------------------------------|
 | **Name**| DeviceFileEvents|
 | **Info**|https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceinfo-table|
-| **Purpose**| Used for detecting TOR download and installation, as well as the shopping list creation and deletion. |
+| **Purpose**| Used to detect file activity such as downloads, renames, deletions, and general file interactions with suspicious payloads like EICAR.. |
 
 | **Parameter**       | **Description**                                                              |
 |---------------------|------------------------------------------------------------------------------|
 | **Name**| DeviceProcessEvents|
 | **Info**|https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceinfo-table|
-| **Purpose**| Used to detect the silent installation of TOR as well as the TOR browser and service launching.|
+| **Purpose**| Used to detect PowerShell execution attempts and process activity.|
 
 | **Parameter**       | **Description**                                                              |
 |---------------------|------------------------------------------------------------------------------|
 | **Name**| DeviceNetworkEvents|
 | **Info**|https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table|
-| **Purpose**| Used to detect TOR network activity, specifically tor.exe and firefox.exe making connections over ports to be used by TOR (9001, 9030, 9040, 9050, 9051, 9150).|
+| **Purpose**| Used to detect any outbound network connections initiated by PowerShell.|
+
+| **Parameter**       | **Description**                                                              |
+|---------------------|------------------------------------------------------------------------------|
+| **Name**| DeviceEvents|
+| **Info**|https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table|
+| **Purpose**| Provides additional context for interactions with suspicious files, including detections, alerts, and other system-generated events for further investigation.|
 
 ---
 
 ## Related Queries:
 ```kql
-// Installer name == tor-browser-windows-x86_64-portable-(version).exe
-// Detect the installer being downloaded
-DeviceFileEvents
-| where FileName startswith "tor"
-
-// TOR Browser being silently installed
-// Take note of two spaces before the /S (I don't know why)
+// Detect suspicious PowerShell activity
 DeviceProcessEvents
-| where ProcessCommandLine contains "tor-browser-windows-x86_64-portable-14.0.1.exe  /S"
-| project Timestamp, DeviceName, ActionType, FileName, ProcessCommandLine
-
-// TOR Browser or service was successfully installed and is present on the disk
-DeviceFileEvents
-| where FileName has_any ("tor.exe", "firefox.exe")
-| project  Timestamp, DeviceName, RequestAccountName, ActionType, InitiatingProcessCommandLine
-
-// TOR Browser or service was launched
-DeviceProcessEvents
-| where ProcessCommandLine has_any("tor.exe","firefox.exe")
-| project  Timestamp, DeviceName, AccountName, ActionType, ProcessCommandLine
-
-// TOR Browser or service is being used and is actively creating network connections
-DeviceNetworkEvents
-| where InitiatingProcessFileName in~ ("tor.exe", "firefox.exe")
-| where RemotePort in (9001, 9030, 9040, 9050, 9051, 9150)
-| project Timestamp, DeviceName, InitiatingProcessAccountName, InitiatingProcessFileName, RemoteIP, RemotePort, RemoteUrl
+| where DeviceName == "windows-vm-lab"
+| where FileName == "powershell.exe"
+| where ProcessCommandLine has_any ("Invoke-WebRequest", "-ExecutionPolicy Bypass", "-WindowStyle Hidden")
+| project Timestamp, DeviceName, ActionType, AccountName, FileName, ProcessCommandLine
 | order by Timestamp desc
 
-// User shopping list was created and, changed, or deleted
+// Detect file download, rename, and deletion events
 DeviceFileEvents
-| where FileName contains "shopping-list.txt"
+| where DeviceName == "windows-vm-lab"
+| where Timestamp >= datetime(2025-09-17T20:43:20) 
+| project Timestamp, DeviceName, ActionType, FileName, FolderPath, SHA256, Account = InitiatingProcessAccountName
+| order by Timestamp desc
+
+// Check DeviceProcessEvents for execution of EICAR file
+DeviceProcessEvents
+| where DeviceName == "windows-vm-lab"
+| where ProcessCommandLine has_any ("eicar.exe", "eicar.com")
+  or FileName in ("eicar.exe", "eicar.com")
+| project Timestamp, DeviceName, ActionType, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine
+| order by Timestamp desc
+
+// Further investigation of Eicar file interactions
+DeviceEvents
+| where DeviceName == "windows-vm-lab"
+| where FileName has_any ("eicar.exe", "eicar.com", "EICAR.txt")
+| where ActionType == "AntivirusDetection"
+| project Timestamp, DeviceName, ActionType, FileName, FolderPath, InitiatingProcessFileName, ProcessCommandLine, ReportId
+| order by Timestamp desc
+
+// Check for outbound HTTP requests from PowerShell
+DeviceNetworkEvents
+| where DeviceName == "windows-vm-lab"
+| where InitiatingProcessFileName =~ "powershell.exe"
+| where RemoteUrl contains "eicar.org"
+| project Timestamp, RemoteIP, RemotePort, RemoteUrl
+| order by Timestamp desc
 ```
 
 ---
