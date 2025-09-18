@@ -1,5 +1,5 @@
 # Threat Event (Suspicious PowerShell Activity)
-**Unauthorized PowerShell Script Execution and Download Attempt**
+**Unauthorized PowerShell Usage**
 
 ## Steps the "Bad Actor" took Create Logs and IoCs:
 1. Open PowerShell Stealthily with Execution Policy Bypass
