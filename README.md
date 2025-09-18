@@ -1,6 +1,6 @@
 # Official [Cyber Range](http://joshmadakor.tech/cyber-range) Project
 
-<img width="400" src="https://github.com/user-attachments/assets/44bac428-01bb-4fe9-9d85-96cba7698bee" alt="Tor Logo with the onion and a crosshair on it"/>
+<img width="517" height="269" alt="image" src="https://github.com/user-attachments/assets/ceb7e6fb-faa4-4bc1-b0d1-9fcedf833c41" />
 
 # Threat Hunt Report: Unauthorized TOR Usage
 - [Scenario Creation](https://github.com/cherinejoseph/threat-hunting-scenario-powershell/blob/main/threat-hunting-scenario-powershell.md)
@@ -18,150 +18,195 @@ A recent cybersecurity news alert highlighted an increase in threat actors abusi
 
 ### High-Level TOR-Related IoC Discovery Plan
 
-- **Check `DeviceFileEvents`** for any `tor(.exe)` or `firefox(.exe)` file events.
-- **Check `DeviceProcessEvents`** for any signs of installation or usage.
-- **Check `DeviceNetworkEvents`** for any signs of outgoing connections over known TOR ports.
+- **Check `DeviceFileEvents`** for file downloads, renames, deletions, and interactions with potentially malicious payloads.
+- **Check `DeviceProcessEvents`** for PowerShell process creation with suspicious commands, including attempts to execute downloaded files.
+- **Check `DeviceNetworkEvents`** for outbound connections initiated by PowerShell.
+- **Check `DeviceEvents`** for additional context, including security alerts and blocked execution attempts.
 
 ---
 
 ## Steps Taken
 
-### 1. Searched the `DeviceFileEvents` Table
+### 1. Searched the `DeviceProcessEvents` Table
 
-Searched for any file that had the string "tor" in it and discovered what looks like the user "employee015" downloaded a TOR installer, did something that resulted in many TOR-related files being copied to the desktop, and the creation of a file called `tor-shopping-list.txt` on the desktop at `2025-09-12T20:01:18.1181308Z`. These events began at `2025-09-12T19:51:10.5002119Z`.
+Searched the DeviceProcessEvents table for instance of PowerShell being executed with -ExecutionPolicy Bypass and Invoke-WebRequest. I discovered that the account “windowsvm” launched PowerShell at 2025-09-17T20:43:20. on windows-vm-lab. The command execution indicates an attempt to run scripts in a stealthy manner, likely to download or manipulate files without user awareness.
 
 **Query used to locate events:**
 
 ```kql
-DeviceFileEvents
-| where DeviceName == "windows-vm-empl"
-| where InitiatingProcessAccountName == "employee015"
-| where FileName contains "tor"
-| where Timestamp >= datetime(2025-09-12T19:51:10.5002119Z)
+DeviceProcessEvents
+| where DeviceName == "windows-vm-lab"
+| where FileName == "powershell.exe"
+| where ProcessCommandLine has_any ("Invoke-WebRequest", "-ExecutionPolicy Bypass", "-WindowStyle Hidden")
+| project Timestamp, DeviceName, ActionType, AccountName, FileName, ProcessCommandLine
 | order by Timestamp desc
-| project Timestamp, DeviceName, ActionType, FileName, FolderPath, SHA256, InitiatingProcessAccountName
+
 ```
-<img width="2708" height="1314" alt="image" src="https://github.com/user-attachments/assets/56a12a86-89d8-4b0f-b0e9-13e2d51a36f2" />
+<img width="1309" height="458" alt="image" src="https://github.com/user-attachments/assets/dbaeda6e-a7e1-44cf-84d2-cd80975626c2" />
+
+Expanded result for further observation:
+
+<img width="2458" height="462" alt="image" src="https://github.com/user-attachments/assets/c20a286a-b311-4c45-979c-ff7b633cc81b" />
+
 
 
 ---
 
-### 2. Searched the `DeviceProcessEvents` Table
+### 2. Searched the `DeviceFilevents` Table
 
-Searched for any `ProcessCommandLine` that contained the string "tor-browser-windows-x86_64-portable-14.0.1.exe". Based on the logs returned, at `2025-09-12T19:52:45.0844675Z`, an employee on the "windows-vm-empl" device ran the file `tor-browser-windows-x86_64-portable-14.0.1.exe` from their Downloads folder, using a command that triggered a silent installation.
+Searched the DeviceFileEvents table for  for file activity on the device “windows-vm-lab” starting at the time PowerShell was launched and discovered the following sequence of events by user "windowsvm":
+
+
+- Sep 17, 2025 4:44:12 PM – A file named “eicar.com” was created in C:\Users\Public\.
+- Sep 17, 2025 4:44:26 PM – The file “eicar.com” was renamed to eicar.exe, indicating preparation for execution.
+- Sep 17, 2025 4:45:16 PM – The file eicar.exe was deleted, suggesting either cleanup by the attacker or security controls removing the file.
+
 
 **Query used to locate event:**
 
 ```kql
 
-DeviceProcessEvents
-| where DeviceName == "windows-vm-empl"
-| where ProcessCommandLine contains "tor-browser-windows-x86_64-portable-14.5.6.exe"
-| project Timestamp, DeviceName, AccountName, ActionType, FileName, FolderPath, SHA256, ProcessCommandLine
+DeviceFileEvents
+| where DeviceName == "windows-vm-lab"
+| where Timestamp >= datetime(2025-09-17T20:43:20) 
+| project Timestamp, DeviceName, ActionType, FileName, FolderPath, SHA256, Account = InitiatingProcessAccountName
+| order by Timestamp desc
+
 ```
-<img width="1329" height="493" alt="image" src="https://github.com/user-attachments/assets/da95fd21-15ce-4e01-81b8-1888a4611c5a" />
-
-
-Expanded result for further observation:
-
-<img width="956" height="576" alt="image" src="https://github.com/user-attachments/assets/d743841e-793f-472f-afe8-2b5d3ec92f21" />
+<img width="2702" height="1096" alt="image" src="https://github.com/user-attachments/assets/5230174f-b1e2-4911-8337-25f5d3aa6ab1" />
 
 ---
 
-### 3. Searched the `DeviceProcessEvents` Table for TOR Browser Execution
+### 3. Searched the `DeviceProcessEvents` Table for Execution Attempts
 
-Searched for any indication that user "employee015" actually opened the TOR browser. There was evidence that they did open it at `2025-09-12T19:52:58.0674538Z`. There were several other instances of `firefox.exe` (TOR) as well as `tor.exe` spawned afterwards.
+Searched DeviceProcessEvents for evidence that “eicar.com” or “eicar.exe” was executed. No process creation events were found. At this stage, there is no indication that the file successfully ran as a process. Further review of DeviceEvents and AlertEvents is required to determine whether an execution attempt was identified. 
+
 
 **Query used to locate events:**
 
 ```kql
 DeviceProcessEvents
-| where DeviceName == "windows-vm-empl"
-| where FileName has_any ("tor.exe", "firefox.exe", "tor-browser.exe")
-| project Timestamp, DeviceName, AccountName, ActionType, FileName, FolderPath, SHA256, ProcessCommandLine
+| where DeviceName == "windows-vm-lab"
+| where ProcessCommandLine has_any ("eicar.exe", "eicar.com")
+  or FileName in ("eicar.exe", "eicar.com")
+| project Timestamp, DeviceName, ActionType, AccountName, FileName, FolderPath, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine
 | order by Timestamp desc
 
+
 ```
-<img width="2656" height="1304" alt="image" src="https://github.com/user-attachments/assets/8b6d8b2a-e02f-4c9f-b9b2-c2486f0ba0fd" />
+<img width="2670" height="1216" alt="image" src="https://github.com/user-attachments/assets/8225033f-4986-4344-9f9b-52d6c0f5ef3d" />
 
 ---
 
-### 4. Searched the `DeviceNetworkEvents` Table for TOR Network Connections
+### 4. Searched the `DeviceEvents` Table for further investigation
 
-Searched for any indication the TOR browser was used to establish a connection using any of the known TOR ports. At `2025-09-12T19:54:10.1943861Z`, an employee on the "windows-vm-empl" device successfully established a connection to the remote IP address `81.137.179.68` on port `9001`. The connection was initiated by the process `tor.exe`, located in the folder `c:\users\employee015\desktop\tor browser\browser\torbrowser\tor\tor.exe`. There were a couple of other connections to sites over port `443`.
+Searched the DeviceEvents table for evidence of execution of “eicar.com” or “eicar.exe”. Multiple AntivirusDetection events were found for the file EICAR.txt during PowerShell activity. Each event has a unique ReportId (e.g., 6305, 6306, 3351, 3350, 3675, 3676) representing a discrete detection by Microsoft Defender. These events indicate that Defender detected the file, but no process creation events were recorded. This confirms that while the file was present and PowerShell interacted with it, it never successfully ran as a process.
+
 
 **Query used to locate events:**
 
 ```kql
-DeviceNetworkEvents  
-| where DeviceName == "windows-vm-empl"  
-| where InitiatingProcessAccountName != "system"  
-| where InitiatingProcessFileName in ("tor.exe", "firefox.exe")  
-| where RemotePort in ("9001", "9030", "9040", "9050", "9051", "9150", "80", "443")  
-| project Timestamp, DeviceName, InitiatingProcessAccountName, ActionType, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessFileName, InitiatingProcessFolderPath  
+DeviceEvents
+| where DeviceName == "windows-vm-lab"
+| where ActionType has_any ("AntivirusDetection", "ExploitGuardBlock", "ProgramBlocked", "MalwareDetected", "MalwareStopped")
+| project Timestamp, DeviceName, ActionType, FileName, FolderPath, InitiatingProcessFileName, InitiatingProcessCommandLine, ReportId
 | order by Timestamp desc
+
 ```
-<img width="2710" height="1314" alt="image" src="https://github.com/user-attachments/assets/214d7b3c-6c38-4e80-ac88-840af28c2c69" />
+<img width="2706" height="1190" alt="image" src="https://github.com/user-attachments/assets/e61b99d2-0122-4e81-bb86-92cd35de99c0" />
+
+---
+### 5. Searched the `DeviceNetworkEvents` Table for further investigation
+
+ Searched the DeviceNetworkEvents Table for outbound HTTP requests from PowerShell.
+ The query identified a successful connection to “eicar.org” on port 443 at 2025-09-17T17:43:48. This confirms that PowerShell attempted network activity to retrieve the EICAR file from the internet.
+
+
+**Query used to locate events:**
+
+```kql
+DeviceNetworkEvents
+| where DeviceName == "windows-vm-lab"
+| where InitiatingProcessFileName == "powershell.exe"
+| where RemoteUrl contains "eicar.org"
+| project Timestamp, DeviceName, ActionType, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessAccountName, InitiatingProcessFileName
+| order by Timestamp desc
+
+```
+<img width="1318" height="537" alt="image" src="https://github.com/user-attachments/assets/5e039514-9425-491e-a95b-ddffded1f503" />
+
 
 ---
 
 ## Chronological Event Timeline 
 
-### 1. File Download - TOR Installer
+### 1. PowerShell Launch
 
-- **Timestamp:** `2025-09-12T19:51:10.5002119Z`
-- **Event:** The user "employee015" downloaded a file named `tor-browser-windows-x86_64-portable-14.0.1.exe` to the Downloads folder.
-- **Action:** File download detected.
-- **File Path:** `C:\Users\employee015\Downloads\tor-browser-windows-x86_64-portable-14.5.6.exe`
-
-### 2. Process Execution - TOR Browser Installation
-
-- **Timestamp:** `2025-09-12T19:52:45.0844675Z`
-- **Event:** The user "employee015" executed the file `tor-browser-windows-x86_64-portable-14.5.6.exe` in silent mode, initiating a background installation of the TOR Browser.
+- **Timestamp:** Sep 17, 2025 4:43:20 PM
+- **Event:** The user `windowsvm` launched `powershell.exe` with the intention of downloading a file from the internet.
 - **Action:** Process creation detected.
-- **Command:** `tor-browser-windows-x86_64-portable-14.5.6.exe /S`
-- **File Path:** `C:\Users\employee015\Downloads\tor-browser-windows-x86_64-portable-14.5.6.exe`
+- **Command:** `"powershell.exe" -WindowStyle Hidden -ExecutionPolicy Bypass`
 
-### 3. Process Execution - TOR Browser Launch
+### 2. File Creation - EICAR Download 
 
-- **Timestamp:** `2025-09-12T19:52:58.0674538Z`
-- **Event:** User "employee015" opened the TOR browser. Subsequent processes associated with TOR browser, such as `firefox.exe` and `tor.exe`, were also created, indicating that the browser launched successfully.
-- **Action:** Process creation of TOR browser-related executables detected.
-- **File Path:** `C:\Users\employee015\Desktop\Tor Browser\Browser\firefox.exe`
+- **Timestamp:** Sep 17, 2025 4:44:12 PM
+- **Event:** PowerShell created a file named `eicar.com` in `C:\Users\Public\`.
+- **Action:** File creation detected, indicating the download of the EICAR test file.
+- **Process:** `powershell.exe`
+- **File Path:** `C:\Users\Public\eicar.com`
 
-### 4. Network Connection - TOR Network
+### 3. File Rename - EICAR
 
-- **Timestamp:** `2025-09-12T19:54:10.1943861Z`
-- **Event:** A network connection to IP `81.137.179.68` on port `9001` by user "employee015" was established using `tor.exe`, confirming TOR browser network activity.
+- **Timestamp:** `2025-09-17T16:44:26`
+- **Event:** The file `eicar.com` was renamed to `eicar.exe`.
+- **Action:** File rename detected.
+- **Process:** `powershell.exe`
+- **File Path:** `C:\Users\Public\eicar.exe`
+
+
+### 4. File Deletion - EICAR
+
+- **Timestamp:** `2025-09-17T16:45:16`
+- **Event:** The file `eicar.exe` was deleted from the system.
+- **Action:** File deletion detected.
+- **Process:** `powershell.exe`
+- **File Path:** `C:\Users\Public\eicar.exe`
+
+### 5. Attempted Execution / Review of DeviceProcessEvents
+
+- **Timestamp:** `2025-09-17T16:45:20`
+- **Event:** Searched for execution of `eicar.com` or `eicar.exe`; no process creation events were found.
+- **Action:** Execution attempt review.
+- **Process:** N/A
+- **File Path:** `C:\Users\Public\eicar.com`, `C:\Users\Public\eicar.exe`
+
+### 6. Device Events - Antivirus Detection
+
+- **Timestamp:** `2025-09-17T16:46:04`
+- **Event:** Antivirus detections triggered for the EICAR file.
+- **Action:** Alert generated.
+- **Process:** `powershell.exe`
+- **File Path:** `C:\ProgramData\eicar.ps1`
+
+### 6. Network Connection - EICAR.org
+
+- **Timestamp:** `2025-09-17T13:43:48`
+- **Event:** Outbound network connection to `www.eicar.org` established via PowerShell.
 - **Action:** Connection success.
-- **Process:** `tor.exe`
-- **File Path:** `c:\users\employee015\desktop\tor browser\browser\firefox.exe
-
-### 5. Additional Network Connections - TOR Browser Activity
-
-- **Timestamps:**
-  - `2025-09-12T19:54:17.5339277Z` - Connected to `64.65.63.44` on port `443`.
-  - `2025-09-12T19:55:20.787043Z` - Local connection to `127.0.0.1` on port `9150`.
-- **Event:** Additional TOR network connections were established, indicating ongoing activity by user "employee015" through the TOR browser.
-- **Action:** Multiple successful connections detected.
-
-### 6. File Creation - TOR Shopping List
-
-- **Timestamp:** `2025-09-12T20:01:18.1181308Z`
-- **Event:** The user "employee015" created a file named `tor-shopping-list.txt` on the desktop, potentially indicating a list or notes related to their TOR browser activities.
-- **Action:** File creation detected.
-- **File Path:** `C:\Users\employee015\Desktop\tor-shopping-list.txt`
+- **Remote IP:** `89.238.73.97`
+- **Remote Port:** `443`
+- **Remote URL:** `www.eicar.org`
 
 ---
 
 ## Summary
 
-The user "employee015" on the "windows-vm-empl" device initiated and completed the installation of the TOR browser. They proceeded to launch the browser, establish connections within the TOR network, and created various files related to TOR on their desktop, including a file named `tor-shopping-list.txt`. This sequence of activities indicates that the user actively installed, configured, and used the TOR browser, likely for anonymous browsing purposes, with possible documentation in the form of the "shopping list" file.
+The investigation of ```windows-vm-lab``` revealed suspicious PowerShell activity that downloaded, renamed, and deleted the EICAR test file. No process creation was observed, indicating the file was not successfully executed. Outbound connections to www.eicar.org confirmed network activity consistent with malicious PowerShell behavior.
 
 ---
 
 ## Response Taken
 
-TOR usage was confirmed on the endpoint `windows-vm-empl` by the user `employee015`. The device was isolated, and the user's direct manager was notified.
+The activity on ```windows-vm-lab``` was documented for further review. The device remains under monitoring for similar PowerShell behaviors, and IT management has been notified of the findings.
 
 ---
