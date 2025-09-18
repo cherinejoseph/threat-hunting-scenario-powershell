@@ -188,7 +188,7 @@ DeviceNetworkEvents
 - **Process:** `powershell.exe`
 - **File Path:** `C:\ProgramData\eicar.ps1`
 
-### 6. Network Connection - EICAR.org
+### 7. Network Connection - EICAR.org
 
 - **Timestamp:** `2025-09-17T13:43:48`
 - **Event:** Outbound network connection to `www.eicar.org` established via PowerShell.
