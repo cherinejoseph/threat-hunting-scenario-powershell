@@ -3,7 +3,7 @@
 <img width="517" height="269" alt="image" src="https://github.com/user-attachments/assets/ceb7e6fb-faa4-4bc1-b0d1-9fcedf833c41" />
 
 # Threat Hunt Report: Suspicious Powershell Activity
-- [Scenario Creation](https://github.com/cherinejoseph/threat-hunting-scenario-powershell/blob/main/threat-hunting-scenario-powershell.md)
+- [Scenario Creation](https://github.com/cherinejoseph/threat-hunting-scenario-powershell/blob/main/threat-hunting-scenario-powershell-event-creation.md)
 
 ## Platforms and Languages Leveraged
 - Windows 10 Virtual Machines (Microsoft Azure)
